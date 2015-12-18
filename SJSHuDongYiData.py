@@ -7,9 +7,18 @@ import re
 import urllib2
 import os
 
+#doc
 from docx import Document
 from docx.shared import Inches
-import pdfminer
+from win32com import client
+
+#pdf
+from pdfminer.pdfparser import PDFParser
+from pdfminer.pdfdocument import PDFDocument
+from pdfminer.pdfinterp import PDFResourceManager, PDFPageInterpreter
+from pdfminer.pdfdevice import PDFDevice
+from pdfminer.converter import PDFPageAggregator
+from pdfminer.layout import *
 
 #br = mechanize.Browser()
 #response = br.open('http://irm.cninfo.com.cn/ircs/interaction/irmInformationList.do?pageNo=1&stkcode=&beginDate=2015-10-30&endDate=2015-11-30&keyStr=&irmType=251314')
@@ -127,25 +136,95 @@ class InvestmentInfoTable(object):
         info.recordData = m.group(2)
 
 
-class InvestigateInfoWord(object):
-    def GetInvestigateCompanyAndPeople(self,word):
-        document = Document(word)
-        tables = document.tables
+class InvestigateInfo(object):
+    def GetInvestigateCompanyAndPeople(self,file):
+        if file.endswith(r'.doc'):
+            return self.GetFromDoc(file)
+        elif file.endswith(r'.docx'):
+            return self.GetFromDocx(file)
+        elif file.endswith(r'.pdf'):
+            return self.GetFromPdf(file)
 
-        for table in tables:
-            for row in table.rows:
-                for cell in row.cells:
-                    print(cell.text)
-                    print('++++++++++++++++')
+    def GetFromPdf(self,pdf):
+        pass
+
+    def GetFromDoc(self,wordDoc):
+        word = client.Dispatch('Word.Application')
+        doc = word.Documents.Open(wordDoc)
+        return doc.Tables[0].Rows[1].Cells[1].Range.Text
+
+    def GetFromDocx(self,wordDocx):
+        document = Document(wordDocx)
+        return document.tables[0].cell(1,1).text
+
+
+
 
 if __name__ == "__main__":
 
-    read = InvestigateInfoWord()
-    read.GetInvestigateCompanyAndPeople(u'D:\\test\\1.doc')
-    curTime = time.strftime('%Y-%m-%d', time.localtime(time.time()))
+    #read = InvestigateInfo()
+    #s = read.GetInvestigateCompanyAndPeople(u'D:\\test\\2.docx')
+    #print s
+    #curTime = time.strftime('%Y-%m-%d', time.localtime(time.time()))
     #web = InvestmentInfoTable()
     #infoVec = []
     #web.GetInvestmentInfo(infoVec,curTime,curTime)
     #print infoVec
 
     #web.GetRecordFile(infoVec,'D:\\test\\')
+
+
+    #pdf
+    from pdfminer.layout import LAParams
+    from pdfminer.converter import PDFPageAggregator
+    from pdfminer.pdfparser import PDFParser
+    from pdfminer.pdfdocument import PDFDocument
+    from pdfminer.pdfpage import PDFPage
+    from pdfminer.pdfpage import PDFTextExtractionNotAllowed
+    from pdfminer.pdfinterp import PDFResourceManager
+    from pdfminer.pdfinterp import PDFPageInterpreter
+    from pdfminer.pdfdevice import PDFDevice
+    fp = open(r'C:\Users\zcj\Desktop\py\1.PDF', 'rb')
+    #用文件对象来创建一个pdf文档分析器
+    parser = PDFParser(fp)
+    # 创建一个  PDF 文档
+    doc = PDFDocument(parser)
+    # 连接分析器 与文档对象
+    parser.set_document(doc)
+    # 检测文档是否提供txt转换，不提供就忽略
+    if not doc.is_extractable:
+        raise PDFTextExtractionNotAllowed
+
+    # Get the outlines of the document.
+    #outlines = doc.get_outlines()
+    #for (level,title,dest,a,se) in outlines:
+    #    print (level, title)
+    # 创建PDf 资源管理器 来管理共享资源
+    rsrcmgr = PDFResourceManager()
+    # 创建一个PDF设备对象
+    laparams = LAParams()
+    device = PDFPageAggregator(rsrcmgr, laparams=laparams)
+    interpreter = PDFPageInterpreter(rsrcmgr, device)
+
+    for page in PDFPage.create_pages(doc):
+        interpreter.process_page(page)
+        # receive the LTPage object for the page.
+        layout = device.get_result()
+        for x in layout:
+            if(not isinstance(x, LTTextBox)):
+                print x.get_text()
+
+    # 处理文档对象中每一页的内容
+    # doc.get_pages() 获取page列表
+    # 循环遍历列表，每次处理一个page的内容
+    # 这里layout是一个LTPage对象 里面存放着 这个page解析出的各种对象 一般包括LTTextBox, LTFigure, LTImage, LTTextBoxHorizontal 等等 想要获取文本就获得对象的text属性，
+    for i, page in enumerate(doc.get_pages()):
+        interpreter.process_page(page)
+        layout = device.get_result()
+        for x in layout:
+            if(isinstance(x, LTTextBoxHorizontal)):
+                if(len(x.text) > 100):
+                    string = x.text.replace('/n', ' ')
+                    print string
+        print '/n/n/n/n'
+    #http://www.unixuser.org/~euske/python/pdfminer/programming.html
