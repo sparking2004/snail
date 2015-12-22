@@ -13,12 +13,16 @@ from docx.shared import Inches
 from win32com import client
 
 #pdf
+from pdfminer.layout import LTTextContainer
+from pdfminer.layout import LAParams
+from pdfminer.converter import PDFPageAggregator
 from pdfminer.pdfparser import PDFParser
 from pdfminer.pdfdocument import PDFDocument
-from pdfminer.pdfinterp import PDFResourceManager, PDFPageInterpreter
+from pdfminer.pdfpage import PDFPage
+from pdfminer.pdfpage import PDFTextExtractionNotAllowed
+from pdfminer.pdfinterp import PDFResourceManager
+from pdfminer.pdfinterp import PDFPageInterpreter
 from pdfminer.pdfdevice import PDFDevice
-from pdfminer.converter import PDFPageAggregator
-from pdfminer.layout import *
 
 #br = mechanize.Browser()
 #response = br.open('http://irm.cninfo.com.cn/ircs/interaction/irmInformationList.do?pageNo=1&stkcode=&beginDate=2015-10-30&endDate=2015-11-30&keyStr=&irmType=251314')
@@ -63,9 +67,16 @@ class InvestmentInfo(object):
         self.name = ""
         self.uploadDate = ""
         self.recordData = ""
+
+        #互动易记录文件网络存储路径
         self.recordFileAddr =""
+
         self.fileExt = ""
+
+        #互动易记录表本地存储路径
         self.localAddr = ""
+
+        #调研机构名称
         self.company = []
 
 class InvestmentInfoTable(object):
@@ -76,8 +87,8 @@ class InvestmentInfoTable(object):
         '''
         获取记录信息
         :param investmentInfoVec: 获取的信息结构体
-        :param beginDate: 查询的开始时间
-        :param endDate: 查询的结束时间
+        :param beginDate: 查询的开始时间，比如2015-12-01
+        :param endDate: 查询的结束时间，比如2015-12-01
         :return:
         '''
         soup = BeautifulSoup(self._GetWebPageInfo(beginDate,endDate))
@@ -138,22 +149,65 @@ class InvestmentInfoTable(object):
 
 class InvestigateInfo(object):
     def GetInvestigateCompanyAndPeople(self,file):
+        '''
+        :param file: 投资者互动易文档路径，支持pdf，doc， docx
+        :return:返回调研机构名，是一个列表
+        '''
+        companyInfo = ''
         if file.endswith(r'.doc'):
-            return self.GetFromDoc(file)
+            companyInfo = self._GetFromDoc(file)
         elif file.endswith(r'.docx'):
-            return self.GetFromDocx(file)
+            companyInfo = self._GetFromDocx(file)
         elif file.endswith(r'.pdf'):
-            return self.GetFromPdf(file)
+            companyInfo = self._GetFromPdf(file)
 
-    def GetFromPdf(self,pdf):
+        return self._FormatCompanyInfo(companyInfo)
+
+
+    def _FormatCompanyInfo(self,compInfo):
+        compInfo = compInfo.replace(u'；',r'\r')
+        return [x.strip() for x in compInfo.split(r'\r') if len(x.strip())!=0]
+
+
+    def _GetFromPdf(self,pdf):
+        '''
+        参考文档http://www.unixuser.org/~euske/python/pdfminer/programming.html
+        '''
+        pass
+        fp = open(pdf, 'rb')
+        #用文件对象来创建一个pdf文档分析器
+        parser = PDFParser(fp)
+        # 创建一个  PDF 文档
+        doc = PDFDocument(parser)
+        # 连接分析器 与文档对象
+        parser.set_document(doc)
+        # 检测文档是否提供txt转换，不提供就忽略
+        if not doc.is_extractable:
+            raise PDFTextExtractionNotAllowed
+
+        # 创建PDf 资源管理器 来管理共享资源
+        rsrcmgr = PDFResourceManager()
+        # 创建一个PDF设备对象
+        laparams = LAParams()
+        device = PDFPageAggregator(rsrcmgr, laparams=laparams)
+        interpreter = PDFPageInterpreter(rsrcmgr, device)
+
+        for page in PDFPage.create_pages(doc):
+            interpreter.process_page(page)
+            # receive the LTPage object for the page.
+            layout = device.get_result()
+            for x in layout:
+                if(isinstance(x, LTTextContainer)):
+                    print x.get_text()
+
         pass
 
-    def GetFromDoc(self,wordDoc):
+    def _GetFromDoc(self,wordDoc):
         word = client.Dispatch('Word.Application')
         doc = word.Documents.Open(wordDoc)
         return doc.Tables[0].Rows[1].Cells[1].Range.Text
 
-    def GetFromDocx(self,wordDocx):
+    def _GetFromDocx(self,wordDocx):
         document = Document(wordDocx)
         return document.tables[0].cell(1,1).text
 
@@ -162,69 +216,31 @@ class InvestigateInfo(object):
 
 if __name__ == "__main__":
 
-    #read = InvestigateInfo()
-    #s = read.GetInvestigateCompanyAndPeople(u'D:\\test\\2.docx')
-    #print s
-    #curTime = time.strftime('%Y-%m-%d', time.localtime(time.time()))
-    #web = InvestmentInfoTable()
-    #infoVec = []
-    #web.GetInvestmentInfo(infoVec,curTime,curTime)
+    #curTime = '2015-12-21'
+    curTime = time.strftime('%Y-%m-%d', time.localtime(time.time()))
+    web = InvestmentInfoTable()
+    infoVec = []
+    web.GetInvestmentInfo(infoVec,curTime,curTime)
     #print infoVec
 
     #web.GetRecordFile(infoVec,'D:\\test\\')
 
+    #打印code到文本
+    f = open('D:\\test\\1.txt','w')
+    codevec = []
+    for info in infoVec:
+        codevec.append(info.code)
+    f.write('\n'.join(codevec))
+    f.close()
 
-    #pdf
-    from pdfminer.layout import LAParams
-    from pdfminer.converter import PDFPageAggregator
-    from pdfminer.pdfparser import PDFParser
-    from pdfminer.pdfdocument import PDFDocument
-    from pdfminer.pdfpage import PDFPage
-    from pdfminer.pdfpage import PDFTextExtractionNotAllowed
-    from pdfminer.pdfinterp import PDFResourceManager
-    from pdfminer.pdfinterp import PDFPageInterpreter
-    from pdfminer.pdfdevice import PDFDevice
-    fp = open(r'C:\Users\zcj\Desktop\py\1.PDF', 'rb')
-    #用文件对象来创建一个pdf文档分析器
-    parser = PDFParser(fp)
-    # 创建一个  PDF 文档
-    doc = PDFDocument(parser)
-    # 连接分析器 与文档对象
-    parser.set_document(doc)
-    # 检测文档是否提供txt转换，不提供就忽略
-    if not doc.is_extractable:
-        raise PDFTextExtractionNotAllowed
 
-    # Get the outlines of the document.
-    #outlines = doc.get_outlines()
-    #for (level,title,dest,a,se) in outlines:
-    #    print (level, title)
-    # 创建PDf 资源管理器 来管理共享资源
-    rsrcmgr = PDFResourceManager()
-    # 创建一个PDF设备对象
-    laparams = LAParams()
-    device = PDFPageAggregator(rsrcmgr, laparams=laparams)
-    interpreter = PDFPageInterpreter(rsrcmgr, device)
+    read = InvestigateInfo()
+    s = read.GetInvestigateCompanyAndPeople(u'D:\\test\\2.pdf')
+    for li in s:
+        print li
 
-    for page in PDFPage.create_pages(doc):
-        interpreter.process_page(page)
-        # receive the LTPage object for the page.
-        layout = device.get_result()
-        for x in layout:
-            if(not isinstance(x, LTTextBox)):
-                print x.get_text()
 
-    # 处理文档对象中每一页的内容
-    # doc.get_pages() 获取page列表
-    # 循环遍历列表，每次处理一个page的内容
-    # 这里layout是一个LTPage对象 里面存放着 这个page解析出的各种对象 一般包括LTTextBox, LTFigure, LTImage, LTTextBoxHorizontal 等等 想要获取文本就获得对象的text属性，
-    for i, page in enumerate(doc.get_pages()):
-        interpreter.process_page(page)
-        layout = device.get_result()
-        for x in layout:
-            if(isinstance(x, LTTextBoxHorizontal)):
-                if(len(x.text) > 100):
-                    string = x.text.replace('/n', ' ')
-                    print string
-        print '/n/n/n/n'
-    #http://www.unixuser.org/~euske/python/pdfminer/programming.html
+
+
+
+
